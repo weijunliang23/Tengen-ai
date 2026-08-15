@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { BLACK, WHITE, colorName, type Color, type Point } from '../core/types';
 import type { Game, GameMode, GameOptions } from '../core/game';
 import type { ScoreReport } from '../core/scoring';
@@ -17,6 +18,7 @@ const REASON_ICON: Record<ReasonKind, string> = {
   danger: '✗',
   'big-point': '★',
   expand: '↗',
+  winrate: '📈',
 };
 
 function CardTitle({ icon, title }: { icon: string; title: string }) {
@@ -56,10 +58,30 @@ function Segmented<T extends string | number>({ value, options, onChange }: Segm
 export function SettingsPanel({
   options,
   onChange,
+  katago,
+  katagoAvailable,
+  onKatagoChange,
+  onTestKatago,
 }: {
   options: GameOptions;
   onChange: (patch: Partial<GameOptions>) => void;
+  katago: KatagoSettingsUI;
+  katagoAvailable: boolean;
+  onKatagoChange: (patch: Partial<KatagoSettingsUI>) => void;
+  onTestKatago: () => Promise<string>;
 }) {
+  const [testState, setTestState] = useState<'idle' | 'busy'>('idle');
+  const [testResult, setTestResult] = useState<string | null>(null);
+
+  const handleTest = async () => {
+    if (testState === 'busy') return;
+    setTestState('busy');
+    setTestResult(null);
+    const r = await onTestKatago();
+    setTestResult(r);
+    setTestState('idle');
+  };
+
   return (
     <section className="card">
       <CardTitle icon="设" title="对局设置" />
@@ -116,8 +138,76 @@ export function SettingsPanel({
         />
         <span className="field-hint">设置改动后点「新对局」生效</span>
       </div>
+
+      <div className="katago-section">
+        <div className="field">
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={katago.enabled}
+              disabled={!katagoAvailable}
+              onChange={(e) => onKatagoChange({ enabled: e.target.checked })}
+            />
+            <span>启用 KataGo 引擎（人机对战 / 智能分析）</span>
+          </label>
+          {!katagoAvailable && (
+            <p className="field-hint">KataGo 仅桌面端（Electron）可用；Web/H5 版继续使用规则 AI。</p>
+          )}
+        </div>
+        {katago.enabled && katagoAvailable && (
+          <>
+            <div className="field">
+              <span className="field-label">引擎路径（katago 可执行文件）</span>
+              <input
+                className="num-input"
+                value={katago.enginePath}
+                placeholder="例如 C:\kata\katago.exe"
+                onChange={(e) => onKatagoChange({ enginePath: e.target.value })}
+              />
+            </div>
+            <div className="field">
+              <span className="field-label">权重路径（.bin.gz 模型）</span>
+              <input
+                className="num-input"
+                value={katago.weightsPath}
+                placeholder="例如 C:\kata\kata1-b18.bin.gz"
+                onChange={(e) => onKatagoChange({ weightsPath: e.target.value })}
+              />
+            </div>
+            <div className="field">
+              <span className="field-label">思考量（visits，越大越强越慢）</span>
+              <input
+                type="range"
+                className="slider"
+                min={10}
+                max={800}
+                step={10}
+                value={katago.visits}
+                onChange={(e) => onKatagoChange({ visits: Number(e.target.value) })}
+              />
+              <span className="field-hint">当前：{katago.visits}（建议 160~400；9/13 路可开高，19 路按机器性能）</span>
+            </div>
+            <button type="button" className="btn" onClick={handleTest} disabled={testState === 'busy'}>
+              {testState === 'busy' ? '测试中…' : '测试连接'}
+            </button>
+            {testResult && <p className={`katago-test-result${testResult.startsWith('✓') ? ' ok' : ' err'}`}>{testResult}</p>}
+            <p className="card-note">
+              下载 KataGo 与权重：https://github.com/lightvector/KataGo/releases
+              （RTX 50 系请用 2025 年后版本；未配置时人机对战与智能分析自动回退规则 AI）
+            </p>
+          </>
+        )}
+      </div>
     </section>
   );
+}
+
+/** 设置面板中 KataGo 的 UI 类型 */
+export interface KatagoSettingsUI {
+  enabled: boolean;
+  enginePath: string;
+  weightsPath: string;
+  visits: number;
 }
 
 // ---------- 对局信息 ----------

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { HeuristicEngine, type AnalysisResult } from '../core/ai/heuristic';
+import { KataGoEngine } from '../core/ai/katago';
 import { Game, type GameOptions } from '../core/game';
 import { NetGame } from '../core/netgame';
 import { scoreChinese } from '../core/scoring';
@@ -7,8 +8,16 @@ import { parseSgf, toSgf } from '../core/sgf';
 import { colorName, pointKey, type Point } from '../core/types';
 import { Board, type SelectInfo } from './Board';
 import { LanPanel } from './LanPanel';
-import { ActionsPanel, GameInfoPanel, ReviewPanel, SettingsPanel, SgfPanel, type GameResult } from './Panels';
-import { DEFAULT_OPTIONS, loadSettings, saveSettings } from './storage';
+import {
+  ActionsPanel,
+  GameInfoPanel,
+  ReviewPanel,
+  SettingsPanel,
+  SgfPanel,
+  type GameResult,
+  type KatagoSettingsUI,
+} from './Panels';
+import { DEFAULT_KATAGO, DEFAULT_OPTIONS, loadSettings, saveSettings } from './storage';
 import { TeachingView } from './TeachingView';
 import { useIsMobile } from './useMediaQuery';
 
@@ -31,8 +40,10 @@ export function App() {
   const [deadPoints, setDeadPoints] = useState<Set<string>>(new Set());
   const [aiThinking, setAiThinking] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [engine] = useState(() => new HeuristicEngine());
   const fileRef = useRef<HTMLInputElement | null>(null);
+
+  // KataGo 设置（桌面端）
+  const [katago, setKatago] = useState<KatagoSettingsUI>(initial?.katago ?? DEFAULT_KATAGO);
 
   // 智能分析（教学提示）
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
@@ -50,10 +61,48 @@ export function App() {
     setPreviewPoint(null);
   }, []);
 
+  // ---- 引擎选择：桌面端启用 KataGo，其余回退规则 AI ----
+  const bridge = typeof window !== 'undefined' ? window.goBoard?.katago : undefined;
+  const ruleEngineRef = useRef<HeuristicEngine | null>(null);
+  if (!ruleEngineRef.current) ruleEngineRef.current = new HeuristicEngine();
+  const engine = useMemo(() => {
+    if (bridge && katago.enabled && katago.enginePath && katago.weightsPath) {
+      return new KataGoEngine(bridge, {
+        enginePath: katago.enginePath,
+        weightsPath: katago.weightsPath,
+        visits: katago.visits,
+      });
+    }
+    return ruleEngineRef.current!;
+  }, [bridge, katago.enabled, katago.enginePath, katago.weightsPath]);
+
+  // 思考量滑条变化 → 引擎即时调整（未启动则下次启动生效）
+  useEffect(() => {
+    if (engine instanceof KataGoEngine) {
+      void engine.setVisits(katago.visits);
+    }
+  }, [engine, katago.visits]);
+
+  /** 测试 KataGo 连接（设置面板按钮） */
+  const handleTestKatago = useCallback(async (): Promise<string> => {
+    if (!bridge) return 'KataGo 仅桌面端（Electron）可用';
+    if (!katago.enginePath || !katago.weightsPath) return '请先填写引擎与权重路径';
+    try {
+      const r = await bridge.configure({
+        enginePath: katago.enginePath,
+        weightsPath: katago.weightsPath,
+        visits: katago.visits,
+      });
+      return r.ok ? `✓ 连接成功（${r.version ?? 'KataGo'}）` : `✗ ${r.error ?? '连接失败'}`;
+    } catch (err) {
+      return '✗ ' + String(err);
+    }
+  }, [bridge, katago]);
+
   // 设置变化时写入 localStorage（刷新/重启不丢失）
   useEffect(() => {
-    saveSettings({ options, showHints, showAtari, view });
-  }, [options, showHints, showAtari, view]);
+    saveSettings({ options, showHints, showAtari, view, katago });
+  }, [options, showHints, showAtari, view, katago]);
 
   const rerender = useCallback(() => setTick((t) => t + 1), []);
   const flash = useCallback((msg: string) => setMessage(msg), []);
@@ -211,7 +260,13 @@ export function App() {
     const timer = window.setTimeout(() => {
       void (async () => {
         try {
-          const mv = await engine.suggest(game.board, game.currentColor, game.moveNumber);
+          const mv = await engine.suggest(
+            game.board,
+            game.currentColor,
+            game.moveNumber,
+            game.options.komi,
+            game.history,
+          );
           if (cancelled) return;
           if (mv.point) game.play(mv.point);
           else game.pass();
@@ -232,13 +287,13 @@ export function App() {
     };
   }, [isAITurn, game, tick, engine, rerender, flash, clearAnalysis]);
 
-  // ---- 智能分析：Top-3 候选着法 + 形势判断 ----
-  const handleHint = useCallback(() => {
+  // ---- 智能分析：Top-3 候选着法 + 形势判断（规则 AI 或 KataGo） ----
+  const handleHint = useCallback(async () => {
     if (game.status === 'ended' || game.isAITurn()) return;
     try {
-      const res = engine.analyze(game.board, game.currentColor, game.options.komi, 3);
+      const res = await engine.analyze(game.board, game.currentColor, game.options.komi, 3, game.history);
       setAnalysis(res);
-      setPreviewPoint(res.suggested);
+      setPreviewPoint(res.suggested ?? res.moves[0]?.point ?? null);
     } catch (err) {
       flash('分析失败：' + String(err));
     }
@@ -418,7 +473,16 @@ export function App() {
 
             <aside className="side-panel">
               {/* 桌面端内联设置；移动端收进弹窗（见底部 modal） */}
-              {!isMobile && <SettingsPanel options={options} onChange={changeOptions} />}
+              {!isMobile && (
+                <SettingsPanel
+                  options={options}
+                  onChange={changeOptions}
+                  katago={katago}
+                  katagoAvailable={!!bridge}
+                  onKatagoChange={(patch) => setKatago((prev) => ({ ...prev, ...patch }))}
+                  onTestKatago={handleTestKatago}
+                />
+              )}
               {options.mode === 'lan' && net && (
                 <LanPanel
                   net={net}
@@ -451,7 +515,8 @@ export function App() {
               <ReviewPanel game={game} onNavigate={handleNavigate} />
               <SgfPanel onImport={() => fileRef.current?.click()} onExport={handleExport} />
               <footer className="app-footer">
-                AI：{engine.name} · KataGo 接口已预留 · Web / Windows / macOS
+                AI：{engine.name}
+                {engine instanceof KataGoEngine ? '（桌面端）' : ' · KataGo 可于设置中启用'} · Web / Windows / macOS
               </footer>
             </aside>
           </>
@@ -480,7 +545,14 @@ export function App() {
                 ✕
               </button>
             </div>
-            <SettingsPanel options={options} onChange={changeOptions} />
+            <SettingsPanel
+              options={options}
+              onChange={changeOptions}
+              katago={katago}
+              katagoAvailable={!!bridge}
+              onKatagoChange={(patch) => setKatago((prev) => ({ ...prev, ...patch }))}
+              onTestKatago={handleTestKatago}
+            />
             <button type="button" className="btn primary" onClick={() => setSettingsOpen(false)}>
               完成
             </button>

@@ -1,5 +1,6 @@
 import { BLACK, WHITE, type Color } from '../core/types';
 import type { GameMode, GameOptions } from '../core/game';
+import type { KatagoSettings } from '../core/ai/katago';
 
 export const SETTINGS_KEY = 'tengen.settings.v1';
 
@@ -8,6 +9,8 @@ export interface PersistedSettings {
   showHints: boolean;
   showAtari: boolean;
   view: 'play' | 'teach';
+  /** KataGo 配置（桌面端） */
+  katago: KatagoSettings & { enabled: boolean };
 }
 
 export const DEFAULT_OPTIONS: GameOptions = {
@@ -17,7 +20,14 @@ export const DEFAULT_OPTIONS: GameOptions = {
   humanColor: BLACK,
 };
 
-const MODES: GameMode[] = ['human-human', 'human-ai'];
+export const DEFAULT_KATAGO: KatagoSettings & { enabled: boolean } = {
+  enabled: false,
+  enginePath: '',
+  weightsPath: '',
+  visits: 160,
+};
+
+const MODES: GameMode[] = ['human-human', 'human-ai', 'lan'];
 
 /** 校验并规整从存储读出的设置，避免损坏数据导致应用崩溃 */
 export function normalizeSettings(raw: unknown): PersistedSettings | null {
@@ -31,11 +41,22 @@ export function normalizeSettings(raw: unknown): PersistedSettings | null {
   const mode: GameMode = MODES.includes(o.mode as GameMode) ? (o.mode as GameMode) : 'human-human';
   const humanColor: Color = o.humanColor === WHITE ? WHITE : BLACK;
 
+  const k = r.katago;
+  const visitsRaw = k?.visits;
+  const visitsOk = typeof visitsRaw === 'number' && Number.isFinite(visitsRaw) && visitsRaw > 0;
+  const katago: PersistedSettings['katago'] = {
+    enabled: k?.enabled === true,
+    enginePath: typeof k?.enginePath === 'string' ? k.enginePath : '',
+    weightsPath: typeof k?.weightsPath === 'string' ? k.weightsPath : '',
+    visits: visitsOk ? (visitsRaw as number) : 160,
+  };
+
   return {
     options: { size, komi, mode, humanColor },
     showHints: r.showHints === true,
     showAtari: r.showAtari === true,
     view: r.view === 'teach' ? 'teach' : 'play',
+    katago,
   };
 }
 

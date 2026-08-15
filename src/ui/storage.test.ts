@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DEFAULT_KATAGO,
   loadSettings,
   normalizeSettings,
   saveSettings,
@@ -37,6 +38,7 @@ describe('设置持久化', () => {
       showHints: true,
       showAtari: false,
       view: 'play',
+      katago: DEFAULT_KATAGO,
     });
   });
 
@@ -45,12 +47,14 @@ describe('设置持久化', () => {
       options: { size: 999, komi: 'x', mode: 'weird', humanColor: 7 },
       showHints: 'yes',
       view: 'hack',
+      katago: { enabled: 'yes', enginePath: 1, weightsPath: null, visits: -5 },
     });
     expect(s).toEqual({
       options: { size: 19, komi: 7.5, mode: 'human-human', humanColor: BLACK },
       showHints: false,
       showAtari: false,
       view: 'play',
+      katago: DEFAULT_KATAGO,
     });
   });
 
@@ -67,6 +71,7 @@ describe('设置持久化', () => {
       showHints: true,
       showAtari: true,
       view: 'teach',
+      katago: { enabled: true, enginePath: 'C:/kata/kata.exe', weightsPath: 'C:/kata/model.bin.gz', visits: 320 },
     };
     saveSettings(settings);
     expect(loadSettings()).toEqual(settings);

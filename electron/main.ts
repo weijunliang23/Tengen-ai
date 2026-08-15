@@ -1,7 +1,9 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, ipcMain } from 'electron';
 import * as path from 'path';
+import { KataGoManager } from './katago-manager';
 
 const isDev = !!process.env.VITE_DEV_SERVER_URL;
+const katago = new KataGoManager();
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -23,11 +25,23 @@ function createWindow(): void {
   if (isDev) {
     void win.loadURL(process.env.VITE_DEV_SERVER_URL!);
   } else {
-    void win.loadFile(path.join(__dirname, '../dist/index.html'));
+    void win.loadFile(path.join(__dirname, '../../dist/index.html'));
   }
 }
 
+/** KataGo IPC 桥（渲染进程经 preload 调用） */
+function registerKatagoIpc(): void {
+  ipcMain.handle('katago:configure', (_e, opts) => katago.configure(opts));
+  ipcMain.handle('katago:close', () => katago.close());
+  ipcMain.handle('katago:setup', (_e, params) => katago.setup(params));
+  ipcMain.handle('katago:play', (_e, params) => katago.play(params));
+  ipcMain.handle('katago:genmove', (_e, params) => katago.genmove(params.color));
+  ipcMain.handle('katago:analyze', (_e, params) => katago.analyze(params));
+  ipcMain.handle('katago:setVisits', (_e, visits) => katago.setVisits(visits));
+}
+
 app.whenReady().then(() => {
+  registerKatagoIpc();
   createWindow();
 
   app.on('activate', () => {
@@ -39,16 +53,6 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-/* ------------------------------------------------------------------
- * KataGo 引擎桥（预留）
- *
- * 渲染进程无法直接启动子进程（contextIsolation + sandbox），需经主进程。
- * 启用步骤：
- *   1. 下载 KataGo：https://github.com/lightvector/KataGo/releases
- *   2. 下载权重：  *.bin.gz
- *   3. 设置环境变量 KATAGO_PATH / KATAGO_MODEL
- *   4. 注册 ipcMain.handle('ai:suggest', ...)：
- *      - spawn(KATAGO_PATH, ['gtp', '-model', KATAGO_MODEL])
- *      - 按 GTP 协议 boardsize / komi / play / genmove
- *      - 渲染进程通过 window.goBoard.suggest() 调用
- * ------------------------------------------------------------------ */
+app.on('will-quit', () => {
+  void katago.close();
+});

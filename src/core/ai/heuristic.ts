@@ -1,23 +1,16 @@
 import { Board } from '../board';
 import { applyMove } from '../rules';
 import type { Color, Point } from '../types';
-import { assessPosition, buildMoveReasons, type MoveReason, type PositionAssessment } from '../analysis';
-import type { GoEngine, MoveSuggestion } from './engine';
+import {
+  assessPosition,
+  buildMoveReasons,
+  type AnalysisResult,
+  type MoveAnalysis,
+  type MoveReason,
+} from '../analysis';
+import type { GoEngine, Move, MoveSuggestion } from './engine';
 
-export interface MoveAnalysis {
-  point: Point;
-  score: number;
-  reasons: MoveReason[];
-}
-
-export interface AnalysisResult {
-  /** 按评分从高到低的前 N 个候选着法 */
-  moves: MoveAnalysis[];
-  /** 形势判断 */
-  assessment: PositionAssessment;
-  /** 推荐着法（评分最高） */
-  suggested: Point;
-}
+export type { AnalysisResult, MoveAnalysis };
 
 interface Candidate {
   point: Point;
@@ -43,7 +36,13 @@ export class HeuristicEngine implements GoEngine {
 
   constructor(private rng: () => number = Math.random) {}
 
-  async suggest(board: Board, color: Color, _moveCount: number): Promise<MoveSuggestion> {
+  async suggest(
+    board: Board,
+    color: Color,
+    _moveCount: number,
+    _komi?: number,
+    _history?: Move[],
+  ): Promise<MoveSuggestion> {
     const candidates = this.evaluate(board, color);
     if (candidates.length === 0) {
       return { point: null, description: '无处可下' };
@@ -53,7 +52,13 @@ export class HeuristicEngine implements GoEngine {
   }
 
   /** 智能分析：Top-N 候选着法 + 形势判断（供教学提示面板使用） */
-  analyze(board: Board, color: Color, komi: number, topN = 3): AnalysisResult {
+  async analyze(
+    board: Board,
+    color: Color,
+    komi: number,
+    topN = 3,
+    _history?: Move[],
+  ): Promise<AnalysisResult> {
     const candidates = this.evaluate(board, color);
     if (candidates.length === 0) {
       throw new Error('当前局面无处可下');

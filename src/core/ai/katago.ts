@@ -1,50 +1,157 @@
-import type { Board } from '../board';
-import type { Color } from '../types';
-import type { GoEngine, MoveSuggestion } from './engine';
+import { Board } from '../board';
+import { applyMove } from '../rules';
+import { buildMoveReasons, type AnalysisResult, type MoveAnalysis, type MoveReason } from '../analysis';
+import type { Color, Point } from '../types';
+import type { GoEngine, Move, MoveSuggestion } from './engine';
+
+/** KataGo 设置（渲染进程 → 主进程） */
+export interface KatagoSettings {
+  enginePath: string;
+  weightsPath: string;
+  visits: number;
+}
 
 /**
- * KataGo 引擎（预留接口，未启用）。
- *
- * 启用步骤（Electron 桌面端）：
- *   1. 下载 KataGo 可执行文件：https://github.com/lightvector/KataGo/releases
- *   2. 下载权重文件（.bin.gz），例如 kata1-b18c384nbt-s9996604416-d4316597426.bin.gz
- *   3. 设置环境变量 KATAGO_PATH 与 KATAGO_MODEL（或通过构造参数传入）
- *   4. 本类通过 GTP 协议与引擎进程通信：
- *      - boardsize N
- *      - komi K
- *      - play B|W [坐标]   （或 pass）
- *      - genmove B|W       （返回建议着法）
- *
- * 注意：子进程只能由 Electron 主进程启动（Web 端无进程能力），
- * 建议通过 IPC 桥接到渲染进程。当前实现仅保留骨架与协议注释。
+ * 渲染进程 → Electron 主进程的 KataGo 桥（由 preload 暴露；Web 端为 undefined）。
+ * 主进程负责 spawn 引擎进程与 GTP 通信。
+ */
+export interface KatagoBridge {
+  configure(opts: KatagoSettings): Promise<{ ok: boolean; error?: string; version?: string }>;
+  close(): Promise<void>;
+  setup(params: { size: number; komi: number }): Promise<{ ok: boolean; error?: string }>;
+  play(
+    params: { color: Color; x: number; y: number } | { color: Color; pass: true },
+  ): Promise<{ ok: boolean; error?: string }>;
+  genmove(params: { color: Color }): Promise<{ ok: boolean; error?: string; point: Point | null }>;
+  analyze(params: {
+    color: Color;
+    moves?: number;
+  }): Promise<{
+    ok: boolean;
+    error?: string;
+    moves: { point: Point | null; winrate: number; scoreLead: number }[];
+  }>;
+  setVisits(visits: number): Promise<{ ok: boolean; error?: string }>;
+}
+
+/**
+ * KataGo 引擎（渲染进程侧）：通过 KatagoBridge 与主进程通信。
+ * - 每次 suggest/analyze 前回放完整棋谱（boardsize/komi/clear_board/play...），
+ *   天然支持悔棋、打谱、分支等场景；
+ * - 分析结果 = KataGo 胜率/目差 + 规则引擎的「人话理由」混合。
  */
 export class KataGoEngine implements GoEngine {
   readonly name = 'KataGo';
 
-  // 进程句柄（由 Electron 主进程注入的 spawn 能力创建）
-  // private proc: ChildProcess | null = null;
+  private ready = false;
 
   constructor(
-    private readonly kataGoPath?: string,
-    private readonly modelPath?: string,
-    private readonly configPath?: string,
+    private bridge: KatagoBridge,
+    private settings: KatagoSettings,
   ) {}
 
-  async suggest(_board: Board, _color: Color, _moveCount: number): Promise<MoveSuggestion> {
-    // 骨架实现：未配置时明确报错，避免静默失败
-    const missing: string[] = [];
-    if (!this.kataGoPath) missing.push('KATAGO_PATH');
-    if (!this.modelPath) missing.push('KATAGO_MODEL');
-    if (missing.length > 0) {
-      throw new Error(`KataGo 引擎未配置（缺少 ${missing.join('、')}）`);
+  /** 动态调整思考量（visits），已在运行则即时生效 */
+  async setVisits(visits: number): Promise<void> {
+    this.settings = { ...this.settings, visits };
+    if (this.ready) {
+      await this.bridge.setVisits(visits);
     }
-    // 实际流程：
-    // 1. spawn(this.kataGoPath, ['gtp', '-model', this.modelPath, ...(this.configPath ? ['-config', this.configPath] : [])])
-    // 2. 写入 boardsize / komi / play 历史
-    // 3. 发送 genmove，读取返回坐标（或 "pass"）
-    // 4. 解析为 Point 返回
-    throw new Error(
-      `KataGo 引擎尚未实现进程通信（config: ${this.configPath ?? '未配置'}），请先接入 Electron 主进程 IPC`,
-    );
+  }
+
+  private async ensureConfigured(): Promise<void> {
+    if (this.ready) return;
+    const r = await this.bridge.configure(this.settings);
+    if (!r.ok) throw new Error(r.error ?? 'KataGo 引擎启动失败');
+    this.ready = true;
+  }
+
+  /** 回放棋谱到指定局面（清盘 + 依序落子） */
+  private async replay(board: Board, komi: number, history: Move[]): Promise<void> {
+    await this.ensureConfigured();
+    const s = await this.bridge.setup({ size: board.size, komi });
+    if (!s.ok) throw new Error(s.error ?? 'KataGo 棋盘设置失败');
+    for (const m of history) {
+      const r = m.point
+        ? await this.bridge.play({ color: m.color, x: m.point.x, y: m.point.y })
+        : await this.bridge.play({ color: m.color, pass: true });
+      if (!r.ok) throw new Error(r.error ?? 'KataGo 棋谱回放失败');
+    }
+  }
+
+  async suggest(
+    board: Board,
+    color: Color,
+    _moveCount: number,
+    komi = 7.5,
+    history: Move[] = [],
+  ): Promise<MoveSuggestion> {
+    await this.replay(board, komi, history);
+    const g = await this.bridge.genmove({ color });
+    if (!g.ok) throw new Error(g.error ?? 'KataGo 行棋失败');
+    return {
+      point: g.point,
+      description: g.point
+        ? `KataGo 推荐（${board.size} 路 · 思考量 ${this.settings.visits}）`
+        : 'KataGo 建议提子',
+    };
+  }
+
+  async analyze(
+    board: Board,
+    color: Color,
+    komi: number,
+    topN = 3,
+    history: Move[] = [],
+  ): Promise<AnalysisResult> {
+    await this.replay(board, komi, history);
+    const a = await this.bridge.analyze({ color, moves: Math.max(topN, 3) });
+    if (!a.ok) throw new Error(a.error ?? 'KataGo 分析失败');
+
+    const moves: MoveAnalysis[] = [];
+    let bestWinrate = 0;
+    let bestLead = 0;
+    for (const m of a.moves) {
+      if (!m.point) continue; // 提子候选不进入列表展示
+      const reasons: MoveReason[] = [];
+      const probe = board.clone();
+      const res = applyMove(probe, m.point, color);
+      if (res.legal) {
+        reasons.push(...buildMoveReasons(board, color, m.point, res, probe, 0));
+      }
+      const leadText = m.scoreLead >= 0 ? `+${m.scoreLead.toFixed(1)}` : m.scoreLead.toFixed(1);
+      reasons.push({ kind: 'winrate', text: `KataGo 胜率 ${(m.winrate * 100).toFixed(0)}%，目差 ${leadText}` });
+      if (m.winrate > bestWinrate) {
+        bestWinrate = m.winrate;
+        bestLead = m.scoreLead;
+      }
+      moves.push({ point: m.point, score: m.winrate, reasons });
+    }
+    moves.sort((x, y) => y.score - x.score);
+
+    const side = color === 1 ? '黑' : '白';
+    const leadText = bestLead >= 0 ? `+${bestLead.toFixed(1)}` : bestLead.toFixed(1);
+    const assessment = {
+      report: {
+        blackPoints: 0,
+        whitePoints: 0,
+        blackStones: 0,
+        whiteStones: 0,
+        blackTerritory: 0,
+        whiteTerritory: 0,
+        komi,
+        winner: 0 as const,
+        margin: 0,
+        detail: 'KataGo 评估',
+      },
+      text: moves.length > 0
+        ? `形势（KataGo）：执${side}胜率 ${(bestWinrate * 100).toFixed(0)}%，目差 ${leadText}`
+        : '形势（KataGo）：暂无可分析着法',
+    };
+
+    return {
+      moves: moves.slice(0, topN),
+      assessment,
+      suggested: moves[0]?.point ?? null,
+    };
   }
 }

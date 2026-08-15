@@ -12,11 +12,27 @@ export type ReasonKind =
   | 'threat' // 落子后己方仍有棋可被提
   | 'danger' // 落子后己方只剩 1 气
   | 'big-point' // 空旷大场
-  | 'expand'; // 扩张势力
+  | 'expand' // 扩张势力
+  | 'winrate'; // KataGo 胜率/目差
 
 export interface MoveReason {
   kind: ReasonKind;
   text: string;
+}
+
+/** 单个候选着法的分析结果 */
+export interface MoveAnalysis {
+  point: Point;
+  /** 评分（规则引擎为启发分；KataGo 为胜率 0~1） */
+  score: number;
+  reasons: MoveReason[];
+}
+
+/** 引擎分析结果：Top-N 候选 + 形势判断 + 推荐点 */
+export interface AnalysisResult {
+  moves: MoveAnalysis[];
+  assessment: PositionAssessment;
+  suggested: Point | null;
 }
 
 export interface PositionAssessment {

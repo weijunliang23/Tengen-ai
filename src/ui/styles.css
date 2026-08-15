@@ -1187,3 +1187,35 @@ body::before {
 .hint-clear:hover {
   color: var(--ink-dim);
 }
+
+/* ---------------- KataGo 设置 ---------------- */
+
+.katago-section {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--border);
+}
+
+.katago-section .check {
+  margin-top: 0;
+}
+
+.katago-test-result {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+
+.katago-test-result.ok {
+  border: 1px solid rgba(96, 175, 90, 0.4);
+  background: rgba(96, 175, 90, 0.09);
+  color: #cfe8c2;
+}
+
+.katago-test-result.err {
+  border: 1px solid rgba(200, 69, 46, 0.45);
+  background: rgba(200, 69, 46, 0.08);
+  color: var(--accent-text);
+}
