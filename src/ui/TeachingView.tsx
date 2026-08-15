@@ -10,6 +10,10 @@ export function TeachingView() {
   const [replay, setReplay] = useState(() => new LessonReplay(lesson));
   const [step, setStepState] = useState(0);
 
+  const lessonIndex = LESSONS.findIndex((l) => l.id === lessonId);
+  const nextLesson =
+    lessonIndex >= 0 && lessonIndex < LESSONS.length - 1 ? LESSONS[lessonIndex + 1] : null;
+
   const goTo = (s: number) => {
     replay.goTo(s);
     setStepState(replay.step);
@@ -59,10 +63,15 @@ export function TeachingView() {
         </section>
 
         <section className="card teach-steps-card">
-          <h2 className="card-title">
-            <span className="card-icon">步</span>
-            逐步演示
-          </h2>
+          <div className="card-head">
+            <h2 className="card-title">
+              <span className="card-icon">步</span>
+              逐步演示
+            </h2>
+            <span className="step-badge">
+              第 {step + 1} / {replay.totalSteps} 步
+            </span>
+          </div>
           {/* 移动端：选课下拉 */}
           <select
             className="lesson-select only-mobile"
@@ -111,9 +120,26 @@ export function TeachingView() {
             onChange={(e) => goTo(Number(e.target.value))}
           />
           <div className="lesson-desc">
+            <span className="lesson-step-num">第 {step + 1} 步</span>
             <div className="lesson-step-title">{replay.stepTitle()}</div>
             <p className="lesson-step-desc">{replay.stepDesc()}</p>
           </div>
+          {step >= replay.totalSteps - 1 && (
+            <div className="lesson-next">
+              {nextLesson ? (
+                <>
+                  <span className="lesson-next-text">
+                    本课完成 ✓ 下一课：{nextLesson.title}
+                  </span>
+                  <button type="button" className="btn" onClick={() => selectLesson(nextLesson.id)}>
+                    开始下一课 →
+                  </button>
+                </>
+              ) : (
+                <span className="lesson-next-text">全部课程完成 🎉 返回「对局」页实战吧</span>
+              )}
+            </div>
+          )}
         </section>
 
         <section className="card">

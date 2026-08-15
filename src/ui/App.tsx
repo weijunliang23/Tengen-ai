@@ -307,7 +307,19 @@ export function App() {
           </div>
         </div>
         <div className="header-right">
-          <span className="pill">
+          {/* 移动端：设置按钮（右上角）；桌面端设置内联展示，无需此按钮 */}
+          {view === 'play' && (
+            <button
+              type="button"
+              className="header-settings only-mobile"
+              onClick={() => setSettingsOpen(true)}
+              aria-label="对局设置"
+              title="对局设置"
+            >
+              ⚙
+            </button>
+          )}
+          <span className="pill platform-pill">
             {platform ? `Electron ${platform.versions.electron}` : 'Web'}
           </span>
           <span className="pill">中国规则 · 数子法</span>
@@ -358,7 +370,6 @@ export function App() {
                 onToggleMarking={() => setMarkingDead((v) => !v)}
                 onHint={handleHint}
                 onToggleAtari={() => setShowAtari((v) => !v)}
-                onOpenSettings={() => setSettingsOpen(true)}
               />
               <ReviewPanel game={game} onNavigate={handleNavigate} />
               <SgfPanel onImport={() => fileRef.current?.click()} onExport={handleExport} />
