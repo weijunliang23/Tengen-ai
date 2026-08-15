@@ -1,3 +1,7 @@
+<p align="center">
+  <a href="README.md">简体中文</a> · <b>English</b>
+</p>
+
 # Tengen · 天元
 
 > **A teaching-first Go (Weiqi / Baduk) application for Web, Windows & macOS.**

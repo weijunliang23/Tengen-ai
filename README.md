@@ -1,3 +1,7 @@
+<p align="center">
+  <b>简体中文</b> · <a href="README.en.md">English</a>
+</p>
+
 # 围棋 · GoBoard
 
 支持 **Web / Windows / macOS** 的围棋应用：React + TypeScript + Vite 共享核心，Electron 桌面壳。
