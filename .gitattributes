@@ -1,0 +1,12 @@
+# 统一换行符，避免跨平台提交产生噪音
+* text=auto
+
+# 源码统一 LF（Windows 检出时也不转换）
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.css text eol=lf
+*.html text eol=lf
