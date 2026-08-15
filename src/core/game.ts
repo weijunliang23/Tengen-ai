@@ -3,7 +3,7 @@ import { applyMove, forcePlay } from './rules';
 import { scoreChinese, type ScoreReport } from './scoring';
 import { BLACK, WHITE, otherColor, type Color, type Point } from './types';
 
-export type GameMode = 'human-human' | 'human-ai';
+export type GameMode = 'human-human' | 'human-ai' | 'lan';
 export type GameStatus = 'playing' | 'ended';
 
 export interface GameOptions {
@@ -26,7 +26,7 @@ export interface MoveRecord {
 
 export interface GamePlayResult {
   legal: boolean;
-  reason?: 'occupied' | 'suicide' | 'superko' | 'ended' | 'review';
+  reason?: 'occupied' | 'suicide' | 'superko' | 'ended' | 'review' | 'turn';
   captured: Point[];
   koPoint: Point | null;
 }
@@ -79,16 +79,26 @@ export class Game {
     return this.ended && this.position === this.history.length ? 'ended' : 'playing';
   }
 
-  /** 是否轮到 AI 行棋 */
+  /** 是否轮到 AI（或联机对手）行棋 */
   isAITurn(): boolean {
-    if (this.options.mode !== 'human-ai') return false;
-    return this.currentColor !== this.options.humanColor;
+    if (this.options.mode === 'human-ai' || this.options.mode === 'lan') {
+      return this.currentColor !== this.options.humanColor;
+    }
+    return false;
   }
 
-  /** 在当前局面执行一手（人类或 AI 均可调用；调用方自行判断时机） */
+  /** 当前行棋方执行一手（双人 / 人机 / AI 调用） */
   play(point: Point): GamePlayResult {
+    return this.playAs(this.currentColor, point);
+  }
+
+  /** 以指定颜色执行一手（联机对弈：应用对方落子）；校验轮次与合法性 */
+  playAs(color: Color, point: Point): GamePlayResult {
     if (this.status === 'ended') {
       return { legal: false, reason: 'ended', captured: [], koPoint: null };
+    }
+    if (color !== this.currentColor) {
+      return { legal: false, reason: 'turn', captured: [], koPoint: null };
     }
     if (!this.board.inBounds(point) || !this.board.isEmpty(point)) {
       return { legal: false, reason: 'occupied', captured: [], koPoint: null };
@@ -97,11 +107,11 @@ export class Game {
     if (this.isReviewing) this.truncate();
 
     const counts = this.buildCounts(this.position);
-    const res = applyMove(this.board, point, this.currentColor, counts);
+    const res = applyMove(this.board, point, color, counts);
     if (!res.legal) return res;
 
     this.pushMove({
-      color: this.currentColor,
+      color,
       point,
       captured: res.captured,
       koPoint: res.koPoint,
@@ -112,12 +122,20 @@ export class Game {
 
   /** 提子（pass） */
   pass(): GamePlayResult {
+    return this.passAs(this.currentColor);
+  }
+
+  /** 以指定颜色提子（联机对弈：应用对方提子） */
+  passAs(color: Color): GamePlayResult {
     if (this.status === 'ended') {
       return { legal: false, reason: 'ended', captured: [], koPoint: null };
     }
+    if (color !== this.currentColor) {
+      return { legal: false, reason: 'turn', captured: [], koPoint: null };
+    }
     if (this.isReviewing) this.truncate();
     this.pushMove({
-      color: this.currentColor,
+      color,
       point: null,
       captured: [],
       koPoint: null,

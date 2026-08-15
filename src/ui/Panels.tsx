@@ -1,8 +1,23 @@
-import { BLACK, WHITE, colorName, type Color } from '../core/types';
+import { BLACK, WHITE, colorName, type Color, type Point } from '../core/types';
 import type { Game, GameMode, GameOptions } from '../core/game';
 import type { ScoreReport } from '../core/scoring';
+import type { AnalysisResult } from '../core/ai/heuristic';
+import type { ReasonKind } from '../core/analysis';
 
 export type GameResult = { type: 'resign'; color: Color } | { type: 'score'; score: ScoreReport };
+
+/** 理由类型 → 图标 */
+const REASON_ICON: Record<ReasonKind, string> = {
+  capture: '⚔',
+  atari: '⚠',
+  save: '❤',
+  connect: '🔗',
+  cut: '✂',
+  threat: '⚠',
+  danger: '✗',
+  'big-point': '★',
+  expand: '↗',
+};
 
 function CardTitle({ icon, title }: { icon: string; title: string }) {
   return (
@@ -55,6 +70,7 @@ export function SettingsPanel({
           options={[
             { v: 'human-human', label: '双人对弈' },
             { v: 'human-ai', label: '人机对弈' },
+            { v: 'lan', label: '联机对弈' },
           ]}
           onChange={(v) => onChange({ mode: v })}
         />
@@ -71,6 +87,9 @@ export function SettingsPanel({
             onChange={(v) => onChange({ humanColor: v })}
           />
         </div>
+      )}
+      {options.mode === 'lan' && (
+        <p className="card-note">联机对弈：在一台设备运行 <code>npm run server</code>，两台设备分别连接后自动配对（先连执黑）。对局参数以先连一方为准。</p>
       )}
       <div className="field">
         <span className="field-label">棋盘</span>
@@ -132,9 +151,15 @@ function ResultBox({ result }: { result: GameResult }) {
 export function GameInfoPanel({ game, result }: { game: Game; result: GameResult | null }) {
   const turn = game.currentColor;
   let turnLabel = `${colorName(turn)}方行棋`;
-  if (game.isAITurn()) turnLabel = `${colorName(turn)}方 · AI 思考中`;
-  else if (game.options.mode === 'human-ai') turnLabel = `${colorName(turn)}方 · 你`;
-  else turnLabel = `${colorName(turn)}方 · 玩家`;
+  if (game.options.mode === 'lan') {
+    turnLabel = game.isAITurn() ? `${colorName(turn)}方 · 对方` : `${colorName(turn)}方 · 你`;
+  } else if (game.isAITurn()) {
+    turnLabel = `${colorName(turn)}方 · AI 思考中`;
+  } else if (game.options.mode === 'human-ai') {
+    turnLabel = `${colorName(turn)}方 · 你`;
+  } else {
+    turnLabel = `${colorName(turn)}方 · 玩家`;
+  }
 
   let statusText = '进行中';
   if (game.status === 'ended') statusText = '已终局';
@@ -173,8 +198,9 @@ export function ActionsPanel({
   aiThinking,
   showHints,
   markingDead,
-  hintLoading,
-  hintText,
+  lan,
+  analysis,
+  previewPoint,
   showAtari,
   onNewGame,
   onUndo,
@@ -184,14 +210,17 @@ export function ActionsPanel({
   onToggleHints,
   onToggleMarking,
   onHint,
+  onPreview,
+  onClearHint,
   onToggleAtari,
 }: {
   game: Game;
   aiThinking: boolean;
   showHints: boolean;
   markingDead: boolean;
-  hintLoading: boolean;
-  hintText: string | null;
+  lan: boolean;
+  analysis: AnalysisResult | null;
+  previewPoint: Point | null;
   showAtari: boolean;
   onNewGame: () => void;
   onUndo: () => void;
@@ -201,6 +230,8 @@ export function ActionsPanel({
   onToggleHints: () => void;
   onToggleMarking: () => void;
   onHint: () => void;
+  onPreview: (p: Point) => void;
+  onClearHint: () => void;
   onToggleAtari: () => void;
 }) {
   const ended = game.status === 'ended';
@@ -212,7 +243,7 @@ export function ActionsPanel({
         新对局
       </button>
       <div className="btn-row">
-        <button type="button" className="btn" disabled={game.history.length === 0} onClick={onUndo}>
+        <button type="button" className="btn" disabled={game.history.length === 0 || lan} onClick={onUndo}>
           悔棋
         </button>
         <button type="button" className="btn" disabled={ended || aiTurn} onClick={onPass}>
@@ -225,7 +256,7 @@ export function ActionsPanel({
       <button
         type="button"
         className="btn"
-        disabled={ended || aiTurn}
+        disabled={ended || aiTurn || lan}
         onClick={onFinish}
         title="双方停钟后按中国规则数子"
       >
@@ -237,12 +268,44 @@ export function ActionsPanel({
         <button
           type="button"
           className="btn hint-btn"
-          disabled={ended || aiTurn || hintLoading}
+          disabled={ended || aiTurn}
           onClick={onHint}
         >
-          {hintLoading ? '思考中…' : 'AI 建议 · 教学提示'}
+          AI 建议 · 智能分析
         </button>
-        {hintText && <div className="hint-text">{hintText}</div>}
+        {analysis && (
+          <div className="hint-text">
+            <p className="hint-assessment">{analysis.assessment.text}</p>
+            <ul className="hint-moves">
+              {analysis.moves.map((m, i) => (
+                <li key={`${m.point.x}-${m.point.y}`}>
+                  <button
+                    type="button"
+                    className={`hint-move${previewPoint && previewPoint.x === m.point.x && previewPoint.y === m.point.y ? ' active' : ''}`}
+                    onClick={() => onPreview(m.point)}
+                  >
+                    <span className="hint-move-head">
+                      {i === 0 && <span className="hint-rec">★ 推荐</span>}
+                      <span className="hint-move-label">
+                        {coordLabel(m.point, game.options.size)}
+                      </span>
+                    </span>
+                    <span className="hint-move-reasons">
+                      {m.reasons.map((r, j) => (
+                        <span key={j} className="hint-reason">
+                          {REASON_ICON[r.kind]} {r.text}
+                        </span>
+                      ))}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <button type="button" className="hint-clear" onClick={onClearHint}>
+              清除分析
+            </button>
+          </div>
+        )}
       </div>
 
       <label className="check">
@@ -262,6 +325,12 @@ export function ActionsPanel({
       )}
     </section>
   );
+}
+
+/** 棋盘坐标标签（与棋盘边缘标注一致：列 a-t 跳过 i，行自上而下） */
+function coordLabel(p: Point, size: number): string {
+  const COLS = 'abcdefghjklmnopqrstuvwxyz';
+  return `${COLS[p.x] ?? p.x}${size - p.y}`;
 }
 
 // ---------- 打谱复盘 ----------

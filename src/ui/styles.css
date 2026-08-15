@@ -1030,3 +1030,160 @@ body::before {
     display: none;
   }
 }
+
+/* ---------------- 联机对弈 ---------------- */
+
+.lan-status {
+  margin-bottom: 8px;
+  padding: 9px 12px;
+  border-radius: 9px;
+  border: 1px solid rgba(96, 175, 90, 0.4);
+  background: rgba(96, 175, 90, 0.09);
+  color: #cfe8c2;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.lan-status.error {
+  border-color: rgba(200, 69, 46, 0.5);
+  background: rgba(200, 69, 46, 0.1);
+  color: var(--accent-text);
+}
+
+.lan-color {
+  font-size: 14px;
+  color: var(--ink);
+  margin-bottom: 10px;
+}
+
+.lan-color.dim {
+  color: var(--ink-dim);
+  font-size: 12.5px;
+}
+
+.lan-card code {
+  font-family: Consolas, "Courier New", monospace;
+  color: var(--accent-text);
+}
+
+.board-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  border: 1px dashed var(--border-strong);
+  background:
+    radial-gradient(600px 600px at 50% 40%, rgba(232, 122, 75, 0.07), transparent 65%),
+    rgba(0, 0, 0, 0.15);
+  text-align: center;
+  padding: 20px;
+}
+
+.board-placeholder span {
+  font-family: var(--serif);
+  font-size: 20px;
+  letter-spacing: 0.2em;
+  color: var(--ink);
+}
+
+.board-placeholder p {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.8;
+  color: var(--ink-dim);
+}
+
+/* ---------------- 智能分析（Top-3 候选） ---------------- */
+
+.hint-assessment {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--ink);
+  border-bottom: 1px dashed rgba(96, 175, 90, 0.3);
+  padding-bottom: 8px;
+}
+
+.hint-moves {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.hint-move {
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.22);
+  color: var(--ink);
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hint-move:hover {
+  border-color: var(--border-strong);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.hint-move.active {
+  border-color: rgba(96, 175, 90, 0.6);
+  background: rgba(96, 175, 90, 0.12);
+}
+
+.hint-move-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hint-rec {
+  font-size: 11px;
+  font-weight: 700;
+  color: #ffd98a;
+  letter-spacing: 0.05em;
+}
+
+.hint-move-label {
+  font-family: var(--serif);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.hint-move-reasons {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.hint-reason {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-dim);
+}
+
+.hint-clear {
+  margin-top: 9px;
+  background: none;
+  border: none;
+  color: var(--ink-faint);
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+}
+
+.hint-clear:hover {
+  color: var(--ink-dim);
+}

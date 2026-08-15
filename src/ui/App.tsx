@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { HeuristicEngine } from '../core/ai/heuristic';
+import { HeuristicEngine, type AnalysisResult } from '../core/ai/heuristic';
 import { Game, type GameOptions } from '../core/game';
+import { NetGame } from '../core/netgame';
 import { scoreChinese } from '../core/scoring';
 import { parseSgf, toSgf } from '../core/sgf';
 import { colorName, pointKey, type Point } from '../core/types';
 import { Board, type SelectInfo } from './Board';
+import { LanPanel } from './LanPanel';
 import { ActionsPanel, GameInfoPanel, ReviewPanel, SettingsPanel, SgfPanel, type GameResult } from './Panels';
 import { DEFAULT_OPTIONS, loadSettings, saveSettings } from './storage';
 import { TeachingView } from './TeachingView';
@@ -32,14 +34,21 @@ export function App() {
   const [engine] = useState(() => new HeuristicEngine());
   const fileRef = useRef<HTMLInputElement | null>(null);
 
-  // 教学提示状态
-  const [hint, setHint] = useState<{ point: Point | null; text: string } | null>(null);
-  const [hintLoading, setHintLoading] = useState(false);
+  // 智能分析（教学提示）
+  const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
+  const [previewPoint, setPreviewPoint] = useState<Point | null>(null);
   const [showAtari, setShowAtari] = useState(initial?.showAtari ?? false);
   const [selInfo, setSelInfo] = useState<SelectInfo | null>(null);
+  // 联机对弈
+  const [net, setNet] = useState<NetGame | null>(null);
   // 移动端：设置弹窗
   const isMobile = useIsMobile();
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  const clearAnalysis = useCallback(() => {
+    setAnalysis(null);
+    setPreviewPoint(null);
+  }, []);
 
   // 设置变化时写入 localStorage（刷新/重启不丢失）
   useEffect(() => {
@@ -58,23 +67,55 @@ export function App() {
 
   // 新对局（应用当前设置）
   const newGame = useCallback(() => {
+    if (options.mode === 'lan') {
+      flash('联机对弈：请在「联机对弈」面板连接服务器');
+      return;
+    }
     const g = new Game(options);
     setGame(g);
     setDeadPoints(new Set());
     setMarkingDead(false);
     setAiThinking(false);
-    setHint(null);
+    clearAnalysis();
     setSelInfo(null);
-  }, [options]);
+  }, [options, flash, clearAnalysis]);
 
-  // 设置变更：只改表单，点击「新对局」后生效
-  const changeOptions = useCallback((patch: Partial<GameOptions>) => {
-    setOptions((prev) => ({ ...prev, ...patch }));
-  }, []);
+  // 设置变更：只改表单，点击「新对局」后生效；联机模式切换时创建/销毁联机会话
+  const changeOptions = useCallback(
+    (patch: Partial<GameOptions>) => {
+      const next = { ...options, ...patch };
+      setOptions(next);
+      if (next.mode === 'lan' && options.mode !== 'lan') {
+        const ng = new NetGame();
+        ng.onUpdate = () => setTick((t) => t + 1);
+        setNet(ng);
+      } else if (next.mode !== 'lan' && options.mode === 'lan') {
+        net?.disconnect();
+        setNet(null);
+        setGame(new Game({ ...next, mode: next.mode }));
+      }
+    },
+    [options, net],
+  );
+
+  // 联机配对成功后：采用服务器分配的执子与对局参数
+  useEffect(() => {
+    if (net?.game) {
+      setGame(net.game);
+      setOptions(net.game.options);
+      setDeadPoints(new Set());
+      setMarkingDead(false);
+    }
+  }, [net, net?.game]);
 
   // 落子 / 标记死子
   const handlePlay = useCallback(
     (p: Point) => {
+      // 联机：走本地联机通道（校验轮次并转发）
+      if (options.mode === 'lan' && net) {
+        if (!net.localPlay(p)) flash('还没轮到你落子');
+        return;
+      }
       if (game.status === 'ended') {
         if (markingDead) {
           setDeadPoints((prev) => {
@@ -95,58 +136,75 @@ export function App() {
         flash(REASON_TEXT[res.reason ?? ''] ?? '此处不能落子');
         return;
       }
-      setHint(null);
+      clearAnalysis();
       setSelInfo(null);
       rerender();
     },
-    [game, markingDead, rerender, flash],
+    [game, markingDead, options.mode, net, rerender, flash, clearAnalysis],
   );
 
   const handlePass = useCallback(() => {
+    if (options.mode === 'lan' && net) {
+      net.localPass();
+      return;
+    }
     if (game.status === 'ended' || game.isAITurn()) return;
     const res = game.pass();
     if (res.legal) {
-      setHint(null);
+      clearAnalysis();
       rerender();
     }
-  }, [game, rerender]);
+  }, [game, options.mode, net, rerender, clearAnalysis]);
 
   const handleUndo = useCallback(() => {
+    if (options.mode === 'lan') {
+      flash('联机对弈暂不支持悔棋');
+      return;
+    }
     if (game.undo()) {
-      setHint(null);
+      clearAnalysis();
       setSelInfo(null);
       rerender();
     }
-  }, [game, rerender]);
+  }, [game, options.mode, rerender, flash, clearAnalysis]);
 
   const handleResign = useCallback(() => {
+    if (options.mode === 'lan' && net) {
+      net.localResign();
+      return;
+    }
     if (game.status === 'ended' || game.isAITurn()) return;
     if (game.isReviewing) game.goToEnd();
     game.resign();
     rerender();
-  }, [game, rerender]);
+  }, [game, options.mode, net, rerender]);
 
   const handleFinish = useCallback(() => {
+    if (options.mode === 'lan') {
+      flash('联机对弈由双方提子或认输结束');
+      return;
+    }
     if (game.status === 'ended' || game.isAITurn()) return;
     if (game.isReviewing) game.goToEnd();
     game.finish();
     setMarkingDead(true);
     flash('对局结束：点击棋盘可标记死子，再次点击取消');
     rerender();
-  }, [game, rerender, flash]);
+  }, [game, options.mode, rerender, flash]);
 
   const handleNavigate = useCallback(
     (index: number) => {
       game.goTo(index);
-      setHint(null);
+      clearAnalysis();
       rerender();
     },
-    [game, rerender],
+    [game, rerender, clearAnalysis],
   );
 
-  // ---- AI 回合（异步） ----
+  // ---- AI 回合（异步，仅人机模式） ----
   const isAITurn = game.isAITurn();
   useEffect(() => {
+    if (game.options.mode !== 'human-ai') return;
     if (!isAITurn || game.status === 'ended') return;
     let cancelled = false;
     setAiThinking(true);
@@ -158,7 +216,7 @@ export function App() {
           if (mv.point) game.play(mv.point);
           else game.pass();
           setAiThinking(false);
-          setHint(null);
+          clearAnalysis();
           rerender();
         } catch (err) {
           if (!cancelled) {
@@ -172,30 +230,19 @@ export function App() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [isAITurn, game, tick, engine, rerender, flash]);
+  }, [isAITurn, game, tick, engine, rerender, flash, clearAnalysis]);
 
-  // ---- 教学提示：AI 建议 ----
+  // ---- 智能分析：Top-3 候选着法 + 形势判断 ----
   const handleHint = useCallback(() => {
-    if (game.status === 'ended' || game.isAITurn() || hintLoading) return;
-    setHintLoading(true);
-    void (async () => {
-      try {
-        const mv = await engine.suggest(game.board, game.currentColor, game.moveNumber);
-        setHintLoading(false);
-        if (mv.point) {
-          setHint({
-            point: mv.point,
-            text: `建议${colorName(game.currentColor)}下 ${String.fromCharCode(97 + mv.point.x)}${game.options.size - mv.point.y}：${mv.description ?? '扩张势力'}`,
-          });
-        } else {
-          setHint({ point: mv.point, text: 'AI 认为当前无处可下，建议提子' });
-        }
-      } catch (err) {
-        setHintLoading(false);
-        flash('AI 建议失败：' + String(err));
-      }
-    })();
-  }, [game, engine, hintLoading, flash]);
+    if (game.status === 'ended' || game.isAITurn()) return;
+    try {
+      const res = engine.analyze(game.board, game.currentColor, game.options.komi, 3);
+      setAnalysis(res);
+      setPreviewPoint(res.suggested);
+    } catch (err) {
+      flash('分析失败：' + String(err));
+    }
+  }, [game, engine, flash]);
 
   // 打吃高亮点集合
   const atariPoints = useMemo(() => {
@@ -231,7 +278,7 @@ export function App() {
         setDeadPoints(new Set());
         setMarkingDead(false);
         setAiThinking(false);
-        setHint(null);
+        clearAnalysis();
         flash(`棋谱已导入（${applied} 手${applied < parsed.moves.length ? '，后续着法不符合规则已跳过' : ''}）`);
       } catch (err) {
         flash('棋谱解析失败：' + String(err));
@@ -275,7 +322,16 @@ export function App() {
   }, [game, tick, deadPoints]);
 
   const platform = typeof window !== 'undefined' ? window.goBoard : undefined;
-  const statusLine = `${game.moveNumber > 0 ? `第 ${game.moveNumber} 手 · ` : ''}${game.isAITurn() ? 'AI 行棋' : game.status === 'ended' ? '对局结束' : game.isReviewing ? `打谱中（第 ${game.position}/${game.history.length} 手）` : '等待落子'}`;
+  const statusLine =
+    options.mode === 'lan'
+      ? net
+        ? net.status === 'playing'
+          ? game.isAITurn()
+            ? '等待对方落子…'
+            : '轮到你落子'
+          : net.statusText || '未连接'
+        : '请先在「联机对弈」面板连接服务器'
+      : `${game.moveNumber > 0 ? `第 ${game.moveNumber} 手 · ` : ''}${game.isAITurn() ? 'AI 行棋' : game.status === 'ended' ? '对局结束' : game.isReviewing ? `打谱中（第 ${game.position}/${game.history.length} 手）` : '等待落子'}`;
   const selText = selInfo
     ? `${colorName(selInfo.color)}棋串 · ${selInfo.liberties.length} 气（绿点为气，气尽即被提）`
     : null;
@@ -331,17 +387,28 @@ export function App() {
           <>
             <section className="board-area">
               <div className="board-frame">
-                <Board
-                  view={game}
-                  tick={tick}
-                  showHints={showHints}
-                  markingDead={markingDead}
-                  deadPoints={deadPoints}
-                  hintMove={hint?.point ?? null}
-                  atariPoints={atariPoints}
-                  onPlay={handlePlay}
-                  onSelect={handleSelect}
-                />
+                {options.mode === 'lan' && !net?.game ? (
+                  <div className="board-placeholder">
+                    <span>联机对弈</span>
+                    <p>
+                      连接服务器后自动开始对局
+                      <br />
+                      先连执黑 · 对局参数以先连一方为准
+                    </p>
+                  </div>
+                ) : (
+                  <Board
+                    view={game}
+                    tick={tick}
+                    showHints={showHints}
+                    markingDead={markingDead}
+                    deadPoints={deadPoints}
+                    hintMove={previewPoint}
+                    atariPoints={atariPoints}
+                    onPlay={handlePlay}
+                    onSelect={handleSelect}
+                  />
+                )}
               </div>
               <div className="board-status">
                 <span className={`status-dot ${game.status === 'ended' ? 'ended' : ''}`} />
@@ -352,14 +419,22 @@ export function App() {
             <aside className="side-panel">
               {/* 桌面端内联设置；移动端收进弹窗（见底部 modal） */}
               {!isMobile && <SettingsPanel options={options} onChange={changeOptions} />}
+              {options.mode === 'lan' && net && (
+                <LanPanel
+                  net={net}
+                  options={options}
+                  onExit={() => changeOptions({ mode: 'human-human' })}
+                />
+              )}
               <GameInfoPanel game={game} result={result} />
               <ActionsPanel
                 game={game}
                 aiThinking={aiThinking}
                 showHints={showHints}
                 markingDead={markingDead}
-                hintLoading={hintLoading}
-                hintText={hint?.text ?? null}
+                lan={options.mode === 'lan' && !!net}
+                analysis={analysis}
+                previewPoint={previewPoint}
                 showAtari={showAtari}
                 onNewGame={newGame}
                 onUndo={handleUndo}
@@ -369,6 +444,8 @@ export function App() {
                 onToggleHints={() => setShowHints((v) => !v)}
                 onToggleMarking={() => setMarkingDead((v) => !v)}
                 onHint={handleHint}
+                onPreview={(p) => setPreviewPoint(p)}
+                onClearHint={clearAnalysis}
                 onToggleAtari={() => setShowAtari((v) => !v)}
               />
               <ReviewPanel game={game} onNavigate={handleNavigate} />

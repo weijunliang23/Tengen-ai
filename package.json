@@ -34,16 +34,19 @@
     "electron:dev": "node scripts/clean-port.mjs 5173 && concurrently -k \"vite\" \"wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .\"",
     "electron:build": "npm run build && tsc -p tsconfig.electron.json && electron-builder --win",
     "electron:build:mac": "npm run build && tsc -p tsconfig.electron.json && electron-builder --mac",
-    "electron:dir": "npm run build && tsc -p tsconfig.electron.json && electron-builder --dir"
+    "electron:dir": "npm run build && tsc -p tsconfig.electron.json && electron-builder --dir",
+    "server": "node server/index.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^9.1.0",
     "cross-env": "^7.0.3",

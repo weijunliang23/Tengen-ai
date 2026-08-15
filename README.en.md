@@ -26,6 +26,7 @@ The name *Tengen* (天元) is the center point of the board — the starting poi
 
 ### Learning & Teaching
 - **AI suggestions with reasons** — ask the AI for a move and it explains *why*: "captures 2 White stones", "saves a captured group", "atari on White", and more
+- **Smart analysis** — position assessment (estimated territory for both sides + who leads) plus a **Top-3 candidate-move list** with structured reasons; click any candidate to preview it on the board
 - **Atari highlighting** — all groups in atari are circled in red
 - **Group inspection** — click any stone to see its liberties (marked in green)
 - **Teaching mode** — six interactive lessons with step-by-step replay and commentary:
@@ -35,6 +36,14 @@ The name *Tengen* (天元) is the center point of the board — the starting poi
   4. The suicide rule
   5. When capturing saves you from suicide
   6. Counting the score at the end of a game
+
+### LAN Multiplayer
+Two devices on the same network can play each other:
+1. Run `npm run server` on one machine (prints `ws://<ip>:8080`).
+2. Both devices open the app → Settings → **联机对弈 (LAN play)** → enter `ws://<ip>:8080` and connect.
+3. They auto-pair: first to connect plays Black. Pass, resign, and rematch are supported.
+
+> The online-play plan (Node + SQLite, same protocol) is documented in `docs/online-play.md` — not implemented yet.
 
 ### Files & Portability
 - **SGF import / export** (including passes)
