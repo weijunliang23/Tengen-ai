@@ -185,6 +185,7 @@ export function ActionsPanel({
   onToggleMarking,
   onHint,
   onToggleAtari,
+  onOpenSettings,
 }: {
   game: Game;
   aiThinking: boolean;
@@ -202,6 +203,7 @@ export function ActionsPanel({
   onToggleMarking: () => void;
   onHint: () => void;
   onToggleAtari: () => void;
+  onOpenSettings?: () => void;
 }) {
   const ended = game.status === 'ended';
   const aiTurn = game.isAITurn();
@@ -211,6 +213,11 @@ export function ActionsPanel({
       <button type="button" className="btn primary" onClick={onNewGame}>
         新对局
       </button>
+      {onOpenSettings && (
+        <button type="button" className="btn only-mobile" onClick={onOpenSettings}>
+          对局设置
+        </button>
+      )}
       <div className="btn-row">
         <button type="button" className="btn" disabled={game.history.length === 0} onClick={onUndo}>
           悔棋

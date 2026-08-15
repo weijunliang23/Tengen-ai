@@ -37,7 +37,8 @@ export function TeachingView() {
       </section>
 
       <aside className="side-panel">
-        <section className="card">
+        {/* 桌面端：完整选课列表；移动端隐藏，改用顶部下拉（见逐步演示卡） */}
+        <section className="card teach-select-card">
           <h2 className="card-title">
             <span className="card-icon">课</span>
             规则演示 · 选课
@@ -57,11 +58,24 @@ export function TeachingView() {
           </div>
         </section>
 
-        <section className="card">
+        <section className="card teach-steps-card">
           <h2 className="card-title">
             <span className="card-icon">步</span>
             逐步演示
           </h2>
+          {/* 移动端：选课下拉 */}
+          <select
+            className="lesson-select only-mobile"
+            value={lessonId}
+            onChange={(e) => selectLesson(e.target.value)}
+            aria-label="选择演示课件"
+          >
+            {LESSONS.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.title} — {l.summary}
+              </option>
+            ))}
+          </select>
           <div className="btn-row four">
             <button type="button" className="btn" disabled={step === 0} onClick={() => goTo(0)} title="回到开头">
               ⏮

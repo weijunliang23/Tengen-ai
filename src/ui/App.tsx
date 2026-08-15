@@ -8,6 +8,7 @@ import { Board, type SelectInfo } from './Board';
 import { ActionsPanel, GameInfoPanel, ReviewPanel, SettingsPanel, SgfPanel, type GameResult } from './Panels';
 import { DEFAULT_OPTIONS, loadSettings, saveSettings } from './storage';
 import { TeachingView } from './TeachingView';
+import { useIsMobile } from './useMediaQuery';
 
 const REASON_TEXT: Record<string, string> = {
   occupied: '此处已有棋子',
@@ -36,6 +37,9 @@ export function App() {
   const [hintLoading, setHintLoading] = useState(false);
   const [showAtari, setShowAtari] = useState(initial?.showAtari ?? false);
   const [selInfo, setSelInfo] = useState<SelectInfo | null>(null);
+  // 移动端：设置弹窗
+  const isMobile = useIsMobile();
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // 设置变化时写入 localStorage（刷新/重启不丢失）
   useEffect(() => {
@@ -334,7 +338,8 @@ export function App() {
             </section>
 
             <aside className="side-panel">
-              <SettingsPanel options={options} onChange={changeOptions} />
+              {/* 桌面端内联设置；移动端收进弹窗（见底部 modal） */}
+              {!isMobile && <SettingsPanel options={options} onChange={changeOptions} />}
               <GameInfoPanel game={game} result={result} />
               <ActionsPanel
                 game={game}
@@ -353,6 +358,7 @@ export function App() {
                 onToggleMarking={() => setMarkingDead((v) => !v)}
                 onHint={handleHint}
                 onToggleAtari={() => setShowAtari((v) => !v)}
+                onOpenSettings={() => setSettingsOpen(true)}
               />
               <ReviewPanel game={game} onNavigate={handleNavigate} />
               <SgfPanel onImport={() => fileRef.current?.click()} onExport={handleExport} />
@@ -365,6 +371,34 @@ export function App() {
           <TeachingView />
         )}
       </main>
+
+      {/* 移动端：设置弹窗（底部抽屉） */}
+      {isMobile && settingsOpen && (
+        <div className="modal-overlay" onClick={() => setSettingsOpen(false)}>
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-header">
+              <h2 className="modal-title">对局设置</h2>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => setSettingsOpen(false)}
+                aria-label="关闭设置"
+              >
+                ✕
+              </button>
+            </div>
+            <SettingsPanel options={options} onChange={changeOptions} />
+            <button type="button" className="btn primary" onClick={() => setSettingsOpen(false)}>
+              完成
+            </button>
+          </div>
+        </div>
+      )}
 
       <input
         ref={fileRef}
