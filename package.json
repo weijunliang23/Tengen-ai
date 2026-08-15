@@ -25,13 +25,13 @@
   },
   "main": "dist-electron/main.js",
   "scripts": {
-    "dev": "vite",
+    "dev": "node scripts/clean-port.mjs 5173 && vite",
     "build": "tsc -p tsconfig.json --noEmit && vite build",
-    "preview": "vite preview",
+    "preview": "node scripts/clean-port.mjs 4173 && vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.electron.json --noEmit",
-    "electron:dev": "concurrently -k \"vite\" \"wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .\"",
+    "electron:dev": "node scripts/clean-port.mjs 5173 && concurrently -k \"vite\" \"wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .\"",
     "electron:build": "npm run build && tsc -p tsconfig.electron.json && electron-builder --win",
     "electron:build:mac": "npm run build && tsc -p tsconfig.electron.json && electron-builder --mac",
     "electron:dir": "npm run build && tsc -p tsconfig.electron.json && electron-builder --dir"

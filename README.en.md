@@ -65,7 +65,7 @@ The name *Tengen* (天元) is the center point of the board — the starting poi
 
 ```bash
 npm install          # install dependencies
-npm run dev          # Web dev server → http://localhost:5173
+npm run dev          # Web dev server → http://localhost:5173 (auto-clears stale port processes first)
 ```
 
 ### LAN access (phone / tablet / other computers)

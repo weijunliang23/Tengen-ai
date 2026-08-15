@@ -26,7 +26,7 @@
 
 ```bash
 npm install
-npm run dev          # Web 开发（http://localhost:5173）
+npm run dev          # Web 开发（http://localhost:5173，启动前自动清理残留端口进程）
 npm test             # 单元测试（vitest）
 npm run build        # 类型检查 + Web 构建
 ```
