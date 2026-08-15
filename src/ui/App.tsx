@@ -3,12 +3,11 @@ import { HeuristicEngine } from '../core/ai/heuristic';
 import { Game, type GameOptions } from '../core/game';
 import { scoreChinese } from '../core/scoring';
 import { parseSgf, toSgf } from '../core/sgf';
-import { BLACK, colorName, pointKey, type Point } from '../core/types';
+import { colorName, pointKey, type Point } from '../core/types';
 import { Board, type SelectInfo } from './Board';
 import { ActionsPanel, GameInfoPanel, ReviewPanel, SettingsPanel, SgfPanel, type GameResult } from './Panels';
+import { DEFAULT_OPTIONS, loadSettings, saveSettings } from './storage';
 import { TeachingView } from './TeachingView';
-
-const DEFAULT_OPTIONS: GameOptions = { size: 19, komi: 7.5, mode: 'human-human', humanColor: BLACK };
 
 const REASON_TEXT: Record<string, string> = {
   occupied: '此处已有棋子',
@@ -18,11 +17,13 @@ const REASON_TEXT: Record<string, string> = {
 };
 
 export function App() {
-  const [options, setOptions] = useState<GameOptions>(DEFAULT_OPTIONS);
-  const [game, setGame] = useState<Game>(() => new Game(DEFAULT_OPTIONS));
+  // 启动时读取本地持久化的设置
+  const [initial] = useState(() => loadSettings());
+  const [options, setOptions] = useState<GameOptions>(initial?.options ?? DEFAULT_OPTIONS);
+  const [game, setGame] = useState<Game>(() => new Game(initial?.options ?? DEFAULT_OPTIONS));
   const [tick, setTick] = useState(0);
-  const [view, setView] = useState<'play' | 'teach'>('play');
-  const [showHints, setShowHints] = useState(false);
+  const [view, setView] = useState<'play' | 'teach'>(initial?.view ?? 'play');
+  const [showHints, setShowHints] = useState(initial?.showHints ?? false);
   const [markingDead, setMarkingDead] = useState(false);
   const [deadPoints, setDeadPoints] = useState<Set<string>>(new Set());
   const [aiThinking, setAiThinking] = useState(false);
@@ -33,8 +34,13 @@ export function App() {
   // 教学提示状态
   const [hint, setHint] = useState<{ point: Point | null; text: string } | null>(null);
   const [hintLoading, setHintLoading] = useState(false);
-  const [showAtari, setShowAtari] = useState(false);
+  const [showAtari, setShowAtari] = useState(initial?.showAtari ?? false);
   const [selInfo, setSelInfo] = useState<SelectInfo | null>(null);
+
+  // 设置变化时写入 localStorage（刷新/重启不丢失）
+  useEffect(() => {
+    saveSettings({ options, showHints, showAtari, view });
+  }, [options, showHints, showAtari, view]);
 
   const rerender = useCallback(() => setTick((t) => t + 1), []);
   const flash = useCallback((msg: string) => setMessage(msg), []);

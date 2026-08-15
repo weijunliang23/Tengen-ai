@@ -12,5 +12,11 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    // host: true = 监听所有网卡，同局域网设备可通过 http://<本机IP>:5173 访问
+    host: true,
+  },
+  preview: {
+    port: 4173,
+    host: true,
   },
 });

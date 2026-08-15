@@ -68,6 +68,18 @@ npm install          # install dependencies
 npm run dev          # Web dev server → http://localhost:5173
 ```
 
+### LAN access (phone / tablet / other computers)
+
+`npm run dev` listens on all network interfaces by default. After starting, the terminal prints a **Network** URL (e.g. `http://192.168.x.x:5173`) — any device on the same LAN can open it in a browser and start playing.
+
+- If other devices can't connect: on Windows, allow Node.js through the firewall (Private networks) when prompted, or add it manually in *Allow an app through Windows Firewall*.
+- The phone/computer must be on the **same Wi-Fi / LAN**.
+- `npm run preview` (port 4173, for the production build) also supports LAN access.
+
+### Settings persistence
+
+Game settings (board size, komi, mode) and toggles (hints, atari highlighting, view tab) are saved to **localStorage** automatically — they survive page refreshes and restarts. Click **New Game** to apply a changed setting.
+
 ### Tests & Build
 
 ```bash
